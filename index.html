@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Word Translator (DeepLX)</title>
+<style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; }
+    .container { background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: auto; }
+    input, select, button { margin: 10px; padding: 10px; font-size: 16px; }
+</style>
+<!-- docx.js βιβλιοθήκη -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <h1>AI Word Translator (DeepLX)</h1>
+    <input type="file" id="upload" accept=".docx"><br>
+    <label>Από γλώσσα:</label>
+    <select id="sourceLang">
+        <option value="auto">Αυτόματο</option>
+        <option value="en">Αγγλικά</option>
+        <option value="el">Ελληνικά</option>
+        <option value="fr">Γαλλικά</option>
+        <option value="de">Γερμανικά</option>
+    </select><br>
+    <label>Σε γλώσσα:</label>
+    <select id="targetLang">
+        <option value="en">Αγγλικά</option>
+        <option value="el">Ελληνικά</option>
+        <option value="fr">Γαλλικά</option>
+        <option value="de">Γερμανικά</option>
+    </select><br>
+    <button onclick="translateDoc()">Μετάφραση & Λήψη</button>
+    <p id="status"></p>
+</div>
+
+<script>
+async function translateText(text, from, to) {
+    const res = await fetch("https://deeplx.vercel.app/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text, source_lang: from, target_lang: to })
+    });
+    const data = await res.json();
+    return data.data || text;
+}
+
+async function translateDoc() {
+    const fileInput = document.getElementById("upload");
+    const sourceLang = document.getElementById("sourceLang").value;
+    const targetLang = document.getElementById("targetLang").value;
+    const statusEl = document.getElementById("status");
+
+    if (!fileInput.files[0]) {
+        alert("Επίλεξε ένα αρχείο Word (.docx)");
+        return;
+    }
+
+    statusEl.innerText = "Φόρτωση αρχείου...";
+    const arrayBuffer = await fileInput.files[0].arrayBuffer();
+    const zip = new JSZip();
+    const loaded = await zip.loadAsync(arrayBuffer);
+    let text = "";
+
+    for (const [filename, file] of Object.entries(loaded.files)) {
+        if (filename.endsWith("document.xml")) {
+            const xml = await file.async("string");
+            const matches = xml.match(/<w:t[^>]*>(.*?)<\/w:t>/g);
+            if (matches) {
+                matches.forEach(m => {
+                    text += m.replace(/<[^>]+>/g, "") + "\n";
+                });
+            }
+        }
+    }
+
+    statusEl.innerText = "Μετάφραση...";
+    const translated = await translateText(text, sourceLang, targetLang);
+
+    statusEl.innerText = "Δημιουργία νέου Word...";
+    const doc = new window.docx.Document({
+        sections: [{ properties: {}, children: [ new window.docx.Paragraph(translated) ] }]
+    });
+
+    const blob = await window.docx.Packer.toBlob(doc);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "translated.docx";
+    link.click();
+
+    statusEl.innerText = "Ολοκληρώθηκε ✅";
+}
+</script>
+<!-- JSZip για ανάγνωση docx -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+</body>
+</html>
